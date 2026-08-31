@@ -1,4 +1,4 @@
-name: SSH Remote Access
+name: tmate Remote Access
 
 on:
   workflow_dispatch:
@@ -7,72 +7,94 @@ on:
         description: "Session timeout (minutes)"
         required: false
         default: "480"
-      ssh_public_key:
-        description: "Your SSH Public Key"
-        required: false
-        default: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPuBRRWPeEzGzSajoJXoZO2ERMFErvU0iDeLmYuPYK7o u0_a317@localhost"
 
 permissions:
   contents: read
 
 jobs:
-  ssh-access:
+  tmate:
     runs-on: ubuntu-latest
     timeout-minutes: 480
     
     steps:
-    - name: Setup SSH Server
+    - name: Setup tmate
       run: |
-        echo "🔧 Setting up SSH..."
+        echo "📡 Setting up tmate..."
         
-        # Setup SSH directory
-        mkdir -p ~/.ssh
-        chmod 700 ~/.ssh
+        # Download tmate
+        wget -q https://github.com/tmate-io/tmate/releases/download/2.4.0/tmate-2.4.0-static-linux-amd64.tar.gz
+        tar -xzf tmate-2.4.0-static-linux-amd64.tar.gz
+        sudo mv tmate-2.4.0-static-linux-amd64/tmate /usr/local/bin/tmate
+        rm -rf tmate-2.4.0-static-linux-amd64 tmate-2.4.0-static-linux-amd64.tar.gz
         
-        # Add your public key
-        echo "${{ inputs.ssh_public_key }}" >> ~/.ssh/authorized_keys
-        chmod 600 ~/.ssh/authorized_keys
+        echo "✅ tmate installed"
         
-        # Install SSH server (minimal)
-        sudo apt-get update -qq
-        sudo apt-get install -y -qq openssh-server
-        
-        # Start SSH
-        sudo systemctl start ssh
-        
-        # Get IP
-        IP=$(curl -s ifconfig.me)
-        USER=$(whoami)
-        
-        echo "====================================="
-        echo "🔐 SSH CONNECTION DETAILS"
-        echo "====================================="
-        echo "IP: $IP"
-        echo "User: $USER"
-        echo "Port: 22"
+    - name: Start tmate session
+      run: |
+        echo "========================================="
+        echo "🔐 TMATE CONNECTION DETAILS"
+        echo "========================================="
         echo ""
-        echo "Connect from Termux:"
-        echo "ssh $USER@$IP -p 22"
-        echo "====================================="
+        echo "Starting tmate session..."
+        echo ""
         
-        # Save to GitHub env
-        echo "SSH_IP=$IP" >> $GITHUB_ENV
-        echo "SSH_USER=$USER" >> $GITHUB_ENV
+        # Start tmate and capture output
+        tmate -F 2>&1 | while read line; do
+          echo "$line"
+          
+          # Capture SSH connection
+          if echo "$line" | grep -q "ssh session:"; then
+            SSH_CMD=$(echo "$line" | grep -o "ssh .*@.*")
+            echo "SSH_CMD=$SSH_CMD" >> $GITHUB_ENV
+            echo "$SSH_CMD" > /tmp/ssh_cmd.txt
+          fi
+          
+          # Capture Web URL
+          if echo "$line" | grep -q "web session:"; then
+            WEB_URL=$(echo "$line" | grep -o "https://tmate.io/t/.*")
+            echo "WEB_URL=$WEB_URL" >> $GITHUB_ENV
+            echo "$WEB_URL" > /tmp/web_url.txt
+          fi
+        done &
+        
+        # Wait for tmate to start
+        sleep 10
+        
+        # Display connection info
+        echo ""
+        echo "========================================="
+        echo "🔐 CONNECTION INFO"
+        echo "========================================="
+        echo ""
+        
+        if [ -f /tmp/ssh_cmd.txt ]; then
+          echo "📱 SSH CONNECTION:"
+          echo "   $(cat /tmp/ssh_cmd.txt)"
+          echo ""
+        fi
+        
+        if [ -f /tmp/web_url.txt ]; then
+          echo "🌐 WEB TERMINAL:"
+          echo "   $(cat /tmp/web_url.txt)"
+          echo ""
+        fi
+        
+        echo "⏱️ Session timeout: ${{ inputs.session_timeout }} minutes"
+        echo "========================================="
+        echo ""
+        echo "✅ Session is active!"
         
     - name: Keep Session Alive
       run: |
-        echo "✅ SSH Server Running"
-        echo "Connect: ssh $SSH_USER@$SSH_IP -p 22"
-        echo ""
-        echo "Session timeout: ${{ inputs.session_timeout }} minutes"
+        echo "🔄 Keeping session alive..."
+        echo "Press Ctrl+C to stop"
         echo ""
         
-        # Keep running
         TIMEOUT=$(( ${{ inputs.session_timeout }} * 60 ))
         ELAPSED=0
         
         while [ $ELAPSED -lt $TIMEOUT ]; do
-          echo "[$(date '+%H:%M:%S')] Active - $(( ($TIMEOUT - $ELAPSED) / 60 )) min left"
+          echo "[$(date '+%H:%M:%S')] Active - $(( ($TIMEOUT - $ELAPSED) / 60 )) min remaining"
           sleep 60
           ELAPSED=$((ELAPSED + 60))
         done
@@ -80,5 +102,5 @@ jobs:
     - name: Cleanup
       if: always()
       run: |
-        sudo systemctl stop ssh || true
-        echo "✅ Cleanup done"
+        pkill -f tmate || true
+        echo "✅ Cleanup complete"
