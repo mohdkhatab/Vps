@@ -1,4 +1,4 @@
-name: Tmate SSH (Free - No Keys Needed)
+name: SSH Tunnel (No Token Needed)
 
 on:
   workflow_dispatch:
@@ -13,4 +13,6 @@ jobs:
 
       - name: Setup Tmate Session
         uses: mxschmitt/action-tmate@v3
-        # limit-access-to-actor wali line yahan se hata di hai
+        with:
+          # Ye line timeout ko kam karke 4 minute kar degi
+          connect-timeout-seconds: 240
