@@ -1,104 +1,81 @@
-name: tmate Remote Access
+name: ngrok SSH Access
 
 on:
   workflow_dispatch:
-    inputs:
-      session_timeout:
-        description: "Session timeout (minutes)"
-        required: false
-        default: "480"
-
-permissions:
-  contents: read
 
 jobs:
-  tmate:
+  ngrok-ssh:
     runs-on: ubuntu-latest
     timeout-minutes: 480
     
     steps:
-    - name: Setup tmate
+    - name: Setup SSH Server
       run: |
-        echo "📡 Setting up tmate..."
-        
-        # Install tmate from apt (works!)
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+        echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPuBRRWPeEzGzSajoJXoZO2ERMFErvU0iDeLmYuPYK7o u0_a317@localhost" >> ~/.ssh/authorized_keys
+        chmod 600 ~/.ssh/authorized_keys
         sudo apt-get update -qq
-        sudo apt-get install -y -qq tmate
-        
-        echo "✅ tmate installed"
-        
-    - name: Start tmate session
+        sudo apt-get install -y -qq openssh-server
+        sudo systemctl start ssh
+
+    - name: Install ngrok
       run: |
-        echo "========================================="
-        echo "🔐 TMATE CONNECTION DETAILS"
-        echo "========================================="
-        echo ""
-        echo "Starting tmate session..."
-        echo ""
-        
-        # Start tmate and capture output
-        tmate -F 2>&1 | while read line; do
-          echo "$line"
-          
-          # Capture SSH connection
-          if echo "$line" | grep -q "ssh session:"; then
-            SSH_CMD=$(echo "$line" | grep -o "ssh .*@.*")
-            echo "SSH_CMD=$SSH_CMD" >> $GITHUB_ENV
-            echo "$SSH_CMD" > /tmp/ssh_cmd.txt
-          fi
-          
-          # Capture Web URL
-          if echo "$line" | grep -q "web session:"; then
-            WEB_URL=$(echo "$line" | grep -o "https://tmate.io/t/.*")
-            echo "WEB_URL=$WEB_URL" >> $GITHUB_ENV
-            echo "$WEB_URL" > /tmp/web_url.txt
-          fi
-        done &
-        
-        # Wait for tmate to start
-        sleep 10
-        
-        # Display connection info
-        echo ""
-        echo "========================================="
-        echo "🔐 CONNECTION INFO"
-        echo "========================================="
-        echo ""
-        
-        if [ -f /tmp/ssh_cmd.txt ]; then
-          echo "📱 SSH CONNECTION:"
-          echo "   $(cat /tmp/ssh_cmd.txt)"
+        wget -q https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip
+        unzip -q ngrok-stable-linux-amd64.zip
+        sudo mv ngrok /usr/local/bin/
+        rm ngrok-stable-linux-amd64.zip
+        ngrok config add-authtoken "2zBxl1Rf6s8s4TcaqMhkOmDoK97_8gn65VaDxGDKTFdeUGxq"
+
+    - name: Start ngrok Tunnel
+      run: |
+        ngrok tcp 22 --region in &
+        sleep 8
+        URL=$(curl -s http://localhost:4040/api/tunnels | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    tunnels = data.get('tunnels', [])
+    if tunnels:
+        print(tunnels[0]['public_url'])
+except:
+    print('')
+")
+        if [ -n "$URL" ]; then
+          echo "========================================="
+          echo "🔐 SSH CONNECTION DETAILS"
+          echo "========================================="
           echo ""
-        fi
-        
-        if [ -f /tmp/web_url.txt ]; then
-          echo "🌐 WEB TERMINAL:"
-          echo "   $(cat /tmp/web_url.txt)"
+          echo "🌐 Public URL: $URL"
           echo ""
+          HOST=$(echo $URL | cut -d'@' -f2 | cut -d':' -f1)
+          PORT=$(echo $URL | cut -d':' -f3)
+          echo "📱 Connect from Termux:"
+          echo "   ssh -p $PORT runner@$HOST"
+          echo ""
+          echo "========================================="
+        else
+          echo "❌ Failed to get tunnel URL"
+          exit 1
         fi
-        
-        echo "⏱️ Session timeout: ${{ inputs.session_timeout }} minutes"
-        echo "========================================="
-        echo ""
-        echo "✅ Session is active!"
-        
+
     - name: Keep Session Alive
       run: |
-        echo "🔄 Keeping session alive..."
-        echo "Press Ctrl+C to stop"
+        echo "✅ Session is active!"
         echo ""
-        
-        TIMEOUT=$(( ${{ inputs.session_timeout }} * 60 ))
+        TIMEOUT=28800
         ELAPSED=0
-        
         while [ $ELAPSED -lt $TIMEOUT ]; do
-          echo "[$(date '+%H:%M:%S')] Active - $(( ($TIMEOUT - $ELAPSED) / 60 )) min remaining"
+          HOURS=$((ELAPSED / 3600))
+          MINS=$(((ELAPSED % 3600) / 60))
+          echo "[$(date '+%H:%M:%S')] Active - ${HOURS}h ${MINS}m elapsed"
           sleep 60
           ELAPSED=$((ELAPSED + 60))
         done
-        
+
     - name: Cleanup
       if: always()
       run: |
-        pkill -f tmate || true
+        sudo systemctl stop ssh || true
+        pkill ngrok || true
         echo "✅ Cleanup complete"
