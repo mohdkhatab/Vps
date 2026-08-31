@@ -1,4 +1,4 @@
-name: 🚀 Ultimate Remote Server Access
+name: SSH Remote Access
 
 on:
   workflow_dispatch:
@@ -7,469 +7,78 @@ on:
         description: "Session timeout (minutes)"
         required: false
         default: "480"
-        type: string
       ssh_public_key:
-        description: "Your SSH Public Key (paste here)"
+        description: "Your SSH Public Key"
         required: false
         default: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPuBRRWPeEzGzSajoJXoZO2ERMFErvU0iDeLmYuPYK7o u0_a317@localhost"
-        type: string
-      enable_tmate:
-        description: "Enable tmate web access"
-        required: false
-        default: "true"
-        type: choice
-        options:
-          - "true"
-          - "false"
-      install_tools:
-        description: "Install additional tools"
-        required: false
-        default: "true"
-        type: choice
-        options:
-          - "true"
-          - "false"
 
 permissions:
   contents: read
-  issues: write
-  actions: write
 
 jobs:
-  remote-access:
+  ssh-access:
     runs-on: ubuntu-latest
     timeout-minutes: 480
     
     steps:
-    - name: 📋 System Information
+    - name: Setup SSH Server
       run: |
-        echo "=========================================="
-        echo "🚀 GITHUB ACTIONS ULTIMATE SERVER"
-        echo "=========================================="
-        echo "OS: $(lsb_release -ds 2>/dev/null || cat /etc/os-release | grep PRETTY_NAME | cut -d'=' -f2)"
-        echo "Kernel: $(uname -r)"
-        echo "CPU: $(nproc) cores"
-        echo "RAM: $(free -h | grep Mem | awk '{print $2}')"
-        echo "Storage: $(df -h / | awk 'NR==2{print $2}')"
-        echo "=========================================="
-        
-    - name: 🔧 System Update
-      run: |
-        sudo apt-get update -qq
-        sudo apt-get upgrade -y -qq
-        
-    - name: 📦 Install Core Tools
-      if: inputs.install_tools == 'true'
-      run: |
-        echo "📦 Installing core tools..."
-        sudo apt-get install -y -qq \
-          curl wget git vim nano htop \
-          net-tools dnsutils iputils-ping \
-          screen tmux zip unzip p7zip-full \
-          ffmpeg mediainfo \
-          python3-pip python3-venv \
-          build-essential autoconf libtool \
-          rsync sshpass openssh-client \
-          tree jq parallel
-        
-        # Install Python tools
-        pip3 install --user --quiet yt-dlp speedtest-cli requests rich
-        
-        # Install aria2 (fast downloader)
-        sudo add-apt-repository -y ppa:aria2/stable 2>/dev/null || true
-        sudo apt-get update -qq
-        sudo apt-get install -y -qq aria2
-        
-        # Install rclone
-        curl -fsSL https://rclone.org/install.sh | sudo bash
-        
-        # Install neofetch
-        sudo apt-get install -y -qq neofetch
-        
-        echo "✅ All tools installed successfully!"
-        
-    - name: 🔑 Setup SSH Access
-      id: ssh
-      run: |
-        echo "🔑 Setting up SSH Server..."
+        echo "🔧 Setting up SSH..."
         
         # Setup SSH directory
         mkdir -p ~/.ssh
         chmod 700 ~/.ssh
         
-        # Add public key if provided
-        if [ -n "${{ inputs.ssh_public_key }}" ]; then
-          echo "${{ inputs.ssh_public_key }}" >> ~/.ssh/authorized_keys
-          chmod 600 ~/.ssh/authorized_keys
-          echo "✅ Custom SSH key added!"
-        else
-          # Generate key if none provided
-          ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N "" -C "github-actions-$(hostname)"
-          cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys
-          echo "✅ Auto-generated SSH key!"
-        fi
+        # Add your public key
+        echo "${{ inputs.ssh_public_key }}" >> ~/.ssh/authorized_keys
+        chmod 600 ~/.ssh/authorized_keys
         
-        # Install and start SSH server
+        # Install SSH server (minimal)
+        sudo apt-get update -qq
         sudo apt-get install -y -qq openssh-server
+        
+        # Start SSH
         sudo systemctl start ssh
         
-        # Get connection details
-        SSH_IP=$(curl -s ifconfig.me || curl -s icanhazip.com || curl -s ipinfo.io/ip)
-        SSH_PORT=22
-        SSH_USER=$(whoami)
+        # Get IP
+        IP=$(curl -s ifconfig.me)
+        USER=$(whoami)
         
-        # Save details
-        echo "SSH_IP=$SSH_IP" >> $GITHUB_ENV
-        echo "SSH_USER=$SSH_USER" >> $GITHUB_ENV
-        echo "SSH_PORT=$SSH_PORT" >> $GITHUB_ENV
+        echo "====================================="
+        echo "🔐 SSH CONNECTION DETAILS"
+        echo "====================================="
+        echo "IP: $IP"
+        echo "User: $USER"
+        echo "Port: 22"
+        echo ""
+        echo "Connect from Termux:"
+        echo "ssh $USER@$IP -p 22"
+        echo "====================================="
         
-        cat > ~/ssh_details.txt << EOF
-        ╔════════════════════════════════════════════════════════╗
-        ║  🔐 SSH CONNECTION DETAILS                             ║
-        ╚════════════════════════════════════════════════════════╝
+        # Save to GitHub env
+        echo "SSH_IP=$IP" >> $GITHUB_ENV
+        echo "SSH_USER=$USER" >> $GITHUB_ENV
         
-        🖥️  Direct SSH Access:
-           Host: $SSH_IP
-           Port: $SSH_PORT
-           User: $SSH_USER
-           
-           Command:
-           ssh $SSH_USER@$SSH_IP -p $SSH_PORT
-        
-        📌 Your SSH Public Key:
-           ${{ inputs.ssh_public_key }}
-        
-        ⏱️  Session Timeout: ${{ inputs.session_timeout }} minutes
-        ════════════════════════════════════════════════════════
-        EOF
-        
-        echo "✅ SSH Server is ready!"
-        
-    - name: 🌐 Setup tmate
-      if: inputs.enable_tmate == 'true'
-      id: tmate
+    - name: Keep Session Alive
       run: |
-        echo "📡 Setting up tmate..."
-        
-        # Install tmate
-        curl -fsSL https://github.com/tmate-io/tmate/releases/download/2.4.0/tmate-2.4.0-static-linux-amd64.tar.gz | tar xz
-        sudo mv tmate-2.4.0-static-linux-amd64/tmate /usr/local/bin/tmate
-        rm -rf tmate-2.4.0-static-linux-amd64
-        
-        # Start tmate in background
-        tmate -F 2>&1 | while read line; do
-          echo "$line"
-          
-          if echo "$line" | grep -q "ssh session:"; then
-            SSH_CMD=$(echo "$line" | grep -o "ssh .*@.*")
-            echo "TMATE_SSH=$SSH_CMD" >> $GITHUB_ENV
-            echo "$SSH_CMD" > /tmp/tmate_ssh.txt
-          fi
-          
-          if echo "$line" | grep -q "web session:"; then
-            WEB_URL=$(echo "$line" | grep -o "https://tmate.io/t/.*")
-            echo "TMATE_WEB=$WEB_URL" >> $GITHUB_ENV
-            echo "$WEB_URL" > /tmp/tmate_web.txt
-          fi
-        done &
-        
-        sleep 10
-        
-        echo "✅ tmate is ready!"
-        
-    - name: 📁 Setup Workspace
-      run: |
-        # Create working directories
-        mkdir -p ~/workspace ~/downloads ~/share ~/temp ~/backup
-        
-        # Create welcome script
-        cat > ~/.bashrc_custom << 'EOF'
-        # Custom bashrc for GitHub Actions
-        export PS1='\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
-        export HISTSIZE=10000
-        
-        # Aliases
-        alias ll='ls -lah'
-        alias la='ls -A'
-        alias l='ls -CF'
-        alias ..='cd ..'
-        alias ...='cd ../..'
-        alias ....='cd ../../..'
-        alias home='cd ~'
-        alias ws='cd ~/workspace'
-        alias dl='cd ~/downloads'
-        alias share='cd ~/share'
-        alias temp='cd ~/temp'
-        
-        # GitHub Actions helpers
-        function gh-run() {
-          echo "🚀 Running on GitHub Actions!"
-          echo "📂 Current directory: $(pwd)"
-          echo "💾 Available disk: $(df -h / | awk 'NR==2{print $4}')"
-          echo "🧠 Memory: $(free -h | grep Mem | awk '{print $7}')"
-          echo "🖥️  CPU: $(nproc) cores"
-        }
-        
-        # Quick download function (multi-threaded)
-        function fastdl() {
-          if [ -z "$1" ]; then
-            echo "Usage: fastdl <url> [output_filename]"
-            return 1
-          fi
-          OUTPUT="${2:-}"
-          if [ -n "$OUTPUT" ]; then
-            aria2c -x 16 -s 16 -d ~/downloads -o "$OUTPUT" "$1"
-          else
-            aria2c -x 16 -s 16 -d ~/downloads "$1"
-          fi
-        }
-        
-        # Quick upload to cloud
-        function cloudup() {
-          if [ -z "$1" ] || [ -z "$2" ]; then
-            echo "Usage: cloudup <file> <remote:path>"
-            return 1
-          fi
-          rclone copy "$1" "$2"
-        }
-        
-        # Extract any archive
-        function extract() {
-          if [ -f "$1" ]; then
-            case "$1" in
-              *.tar.bz2) tar xjf "$1" ;;
-              *.tar.gz) tar xzf "$1" ;;
-              *.bz2) bunzip2 "$1" ;;
-              *.rar) unrar x "$1" ;;
-              *.gz) gunzip "$1" ;;
-              *.tar) tar xf "$1" ;;
-              *.tbz2) tar xjf "$1" ;;
-              *.tgz) tar xzf "$1" ;;
-              *.zip) unzip "$1" ;;
-              *.Z) uncompress "$1" ;;
-              *.7z) 7z x "$1" ;;
-              *) echo "Unknown archive format: $1" ;;
-            esac
-          else
-            echo "File not found: $1"
-          fi
-        }
-        
-        # Start file sharing
-        function share-files() {
-          cd ~/share
-          echo "📤 Starting HTTP server on port 8000..."
-          echo "🌐 Access at: http://$(curl -s ifconfig.me):8000"
-          python3 -m http.server 8000
-        }
-        
-        # Show welcome
+        echo "✅ SSH Server Running"
+        echo "Connect: ssh $SSH_USER@$SSH_IP -p 22"
         echo ""
-        echo "🔥 GITHUB ACTIONS SERVER READY!"
-        echo "================================="
-        echo "📍 Workspace: ~/workspace"
-        echo "📥 Downloads: ~/downloads"
-        echo "📤 Share: ~/share"
-        echo "💾 Backup: ~/backup"
-        echo "================================="
-        echo "💡 Type 'gh-run' for system info"
-        echo "💡 Type 'fastdl <url>' for fast downloads"
-        echo "💡 Type 'share-files' to start HTTP server"
-        echo "================================="
-        EOF
-        
-        echo "source ~/.bashrc_custom" >> ~/.bashrc
-        
-        # Create README files
-        cat > ~/workspace/README.md << 'EOF'
-        # 🚀 GitHub Actions Workspace
-        
-        ## 📁 Directories
-        - `~/workspace` - Main work directory
-        - `~/downloads` - Downloads
-        - `~/share` - Shared files (HTTP server available)
-        - `~/temp` - Temporary files
-        - `~/backup` - Backup files
-        
-        ## 🛠️ Available Tools
-        - **aria2** - Multi-threaded downloader (16 threads)
-        - **rclone** - Cloud storage upload
-        - **yt-dlp** - YouTube/video download
-        - **ffmpeg** - Media processing
-        - **python3** - Python 3 with pip
-        
-        ## ⚡ Quick Commands
-        ```bash
-        # Fast download (16 threads)
-        fastdl https://example.com/bigfile.zip
-        
-        # Fast download with custom name
-        fastdl https://example.com/file.zip myfile.zip
-        
-        # Upload to cloud
-        cloudup file.zip gdrive:/backup/
-        
-        # Start file server
-        share-files
-        
-        # Extract archives
-        extract archive.zip
-        
-        # System info
-        gh-run
-        ```
-        EOF
-        
-        echo "✅ Workspace is ready!"
-        
-    - name: 📊 Display Connection Info
-      run: |
-        echo ""
-        echo "╔════════════════════════════════════════════════════════╗"
-        echo "║  🔐 CONNECTION INFORMATION                             ║"
-        echo "╚════════════════════════════════════════════════════════╝"
-        echo ""
-        echo "📋 SSH Connection Details:"
-        echo "─────────────────────────────────────────────────"
+        echo "Session timeout: ${{ inputs.session_timeout }} minutes"
         echo ""
         
-        # SSH Info
-        echo "🖥️  Direct SSH Access:"
-        echo "   ssh $SSH_USER@$SSH_IP -p $SSH_PORT"
-        echo ""
-        echo "🔑 SSH Public Key (if auto-generated):"
-        if [ -f ~/.ssh/id_ed25519.pub ]; then
-          echo "   $(cat ~/.ssh/id_ed25519.pub)"
-        fi
-        echo ""
-        
-        # tmate Info
-        if [ -f /tmp/tmate_ssh.txt ]; then
-          echo "🔗 tmate SSH:"
-          echo "   $(cat /tmp/tmate_ssh.txt)"
-          echo ""
-        fi
-        
-        if [ -f /tmp/tmate_web.txt ]; then
-          echo "🌐 tmate Web:"
-          echo "   $(cat /tmp/tmate_web.txt)"
-          echo ""
-        fi
-        
-        echo "─────────────────────────────────────────────────"
-        echo ""
-        echo "💾 All connection details saved in: ~/ssh_details.txt"
-        echo "📍 Workspace: ~/workspace"
-        echo "📥 Downloads: ~/downloads"
-        echo "📤 Share: ~/share"
-        echo ""
-        echo "⏱️  Session Timeout: ${{ inputs.session_timeout }} minutes"
-        echo "════════════════════════════════════════════════════════"
-        
-        # Save to GitHub Step Summary
-        cat > $GITHUB_STEP_SUMMARY << 'EOF'
-        ## 🚀 Remote Server Access
-        
-        ### 🔐 SSH Connection
-        ```bash
-        ssh USER@IP -p 22
-        ```
-        
-        ### 🌐 tmate Web Access
-        [Click here for web terminal](TMATE_WEB_URL)
-        
-        ### 📱 tmate SSH
-        ```bash
-        TMATE_SSH_COMMAND
-        ```
-        
-        ### ⚡ Quick Commands
-        - `fastdl <url>` - Multi-threaded download (16 threads)
-        - `cloudup <file> <remote>` - Upload to cloud
-        - `share-files` - Start HTTP file server
-        - `extract <file>` - Extract any archive
-        - `gh-run` - Show system info
-        
-        ### 📁 Directories
-        - `~/workspace` - Main work directory
-        - `~/downloads` - Downloads
-        - `~/share` - Shared files (HTTP server)
-        - `~/backup` - Backup files
-        - `~/temp` - Temporary files
-        
-        ### 🛠️ Installed Tools
-        - aria2 (multi-threaded downloader)
-        - rclone (cloud storage)
-        - yt-dlp (video downloader)
-        - ffmpeg (media processor)
-        - Python 3 with pip
-        - And many more...
-        EOF
-        
-        # Replace placeholders
-        sed -i "s/USER/$SSH_USER/g" $GITHUB_STEP_SUMMARY
-        sed -i "s/IP/$SSH_IP/g" $GITHUB_STEP_SUMMARY
-        
-        if [ -f /tmp/tmate_web.txt ]; then
-          sed -i "s|TMATE_WEB_URL|$(cat /tmp/tmate_web.txt)|g" $GITHUB_STEP_SUMMARY
-        else
-          sed -i "s|TMATE_WEB_URL|Not available|g" $GITHUB_STEP_SUMMARY
-        fi
-        
-        if [ -f /tmp/tmate_ssh.txt ]; then
-          sed -i "s|TMATE_SSH_COMMAND|$(cat /tmp/tmate_ssh.txt)|g" $GITHUB_STEP_SUMMARY
-        else
-          sed -i "s|TMATE_SSH_COMMAND|Not available|g" $GITHUB_STEP_SUMMARY
-        fi
-        
-    - name: ⏳ Keep Session Alive
-      run: |
-        echo "🔄 Session is active..."
-        echo "Press Ctrl+C to stop, or let it timeout."
-        echo ""
-        
-        # Show details
-        echo "╔════════════════════════════════════════════════════════╗"
-        echo "║  🔐 SSH SERVER RUNNING                                 ║"
-        echo "╠════════════════════════════════════════════════════════╣"
-        echo "║  SSH: ssh $SSH_USER@$SSH_IP -p $SSH_PORT"
-        if [ -f /tmp/tmate_web.txt ]; then
-          echo "║  Web: $(cat /tmp/tmate_web.txt)"
-        fi
-        if [ -f /tmp/tmate_ssh.txt ]; then
-          echo "║  tmate: $(cat /tmp/tmate_ssh.txt)"
-        fi
-        echo "║  Timeout: ${{ inputs.session_timeout }} minutes"
-        echo "╚════════════════════════════════════════════════════════╝"
-        echo ""
-        
-        # Session keeper
-        ELAPSED=0
+        # Keep running
         TIMEOUT=$(( ${{ inputs.session_timeout }} * 60 ))
+        ELAPSED=0
         
         while [ $ELAPSED -lt $TIMEOUT ]; do
-          echo "[$(date '+%Y-%m-%d %H:%M:%S')] Session active - $(( ($TIMEOUT - $ELAPSED) / 60 )) minutes remaining"
-          echo "Active connections:"
-          who || echo "No active users"
-          echo ""
-          sleep 300
-          ELAPSED=$((ELAPSED + 300))
+          echo "[$(date '+%H:%M:%S')] Active - $(( ($TIMEOUT - $ELAPSED) / 60 )) min left"
+          sleep 60
+          ELAPSED=$((ELAPSED + 60))
         done
         
-        echo "⏰ Session timeout reached!"
-        
-    - name: 🧹 Cleanup
+    - name: Cleanup
       if: always()
       run: |
-        echo "🧹 Cleaning up..."
-        sudo pkill -f tmate || true
         sudo systemctl stop ssh || true
-        sudo pkill -f "python3 -m http.server" || true
-        
-        # Archive any files if needed
-        if [ -d ~/workspace ]; then
-          echo "📦 Archiving workspace..."
-          tar -czf /tmp/workspace_backup.tar.gz ~/workspace 2>/dev/null || true
-        fi
-        
-        echo "✅ Cleanup complete"
+        echo "✅ Cleanup done"
