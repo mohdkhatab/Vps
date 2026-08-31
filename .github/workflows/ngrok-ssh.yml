@@ -1,4 +1,4 @@
-name: SSH via Tmate (Free)
+name: Tmate SSH (Free - No Keys Needed)
 
 on:
   workflow_dispatch:
@@ -11,7 +11,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup tmate session
+      - name: Setup Tmate Session
         uses: mxschmitt/action-tmate@v3
-        with:
-          limit-access-to-actor: true
+        # limit-access-to-actor wali line yahan se hata di hai
