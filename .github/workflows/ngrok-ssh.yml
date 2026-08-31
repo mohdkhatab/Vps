@@ -1,81 +1,36 @@
-name: ngrok SSH Access
+name: SSH Access
 
 on:
   workflow_dispatch:
 
 jobs:
-  ngrok-ssh:
+  ssh:
     runs-on: ubuntu-latest
     timeout-minutes: 480
     
     steps:
-    - name: Setup SSH Server
+    - name: Setup
       run: |
         mkdir -p ~/.ssh
-        chmod 700 ~/.ssh
         echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPuBRRWPeEzGzSajoJXoZO2ERMFErvU0iDeLmYuPYK7o u0_a317@localhost" >> ~/.ssh/authorized_keys
         chmod 600 ~/.ssh/authorized_keys
-        sudo apt-get update -qq
-        sudo apt-get install -y -qq openssh-server
+        sudo apt-get update
+        sudo apt-get install -y openssh-server
         sudo systemctl start ssh
 
     - name: Install ngrok
       run: |
-        wget -q https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip
-        unzip -q ngrok-stable-linux-amd64.zip
-        sudo mv ngrok /usr/local/bin/
-        rm ngrok-stable-linux-amd64.zip
-        ngrok config add-authtoken "2zBxl1Rf6s8s4TcaqMhkOmDoK97_8gn65VaDxGDKTFdeUGxq"
+        curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+        echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+        sudo apt-get update
+        sudo apt-get install -y ngrok
+        ngrok config add-authtoken 2zBxl1Rf6s8s4TcaqMhkOmDoK97_8gn65VaDxGDKTFdeUGxq
 
-    - name: Start ngrok Tunnel
+    - name: Tunnel
       run: |
-        ngrok tcp 22 --region in &
-        sleep 8
-        URL=$(curl -s http://localhost:4040/api/tunnels | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    tunnels = data.get('tunnels', [])
-    if tunnels:
-        print(tunnels[0]['public_url'])
-except:
-    print('')
-")
-        if [ -n "$URL" ]; then
-          echo "========================================="
-          echo "🔐 SSH CONNECTION DETAILS"
-          echo "========================================="
-          echo ""
-          echo "🌐 Public URL: $URL"
-          echo ""
-          HOST=$(echo $URL | cut -d'@' -f2 | cut -d':' -f1)
-          PORT=$(echo $URL | cut -d':' -f3)
-          echo "📱 Connect from Termux:"
-          echo "   ssh -p $PORT runner@$HOST"
-          echo ""
-          echo "========================================="
-        else
-          echo "❌ Failed to get tunnel URL"
-          exit 1
-        fi
+        ngrok tcp 22 &
+        sleep 10
+        curl -s http://localhost:4040/api/tunnels | python3 -c "import sys,json; print(json.load(sys.stdin)['tunnels'][0]['public_url'])"
 
-    - name: Keep Session Alive
-      run: |
-        echo "✅ Session is active!"
-        echo ""
-        TIMEOUT=28800
-        ELAPSED=0
-        while [ $ELAPSED -lt $TIMEOUT ]; do
-          HOURS=$((ELAPSED / 3600))
-          MINS=$(((ELAPSED % 3600) / 60))
-          echo "[$(date '+%H:%M:%S')] Active - ${HOURS}h ${MINS}m elapsed"
-          sleep 60
-          ELAPSED=$((ELAPSED + 60))
-        done
-
-    - name: Cleanup
-      if: always()
-      run: |
-        sudo systemctl stop ssh || true
-        pkill ngrok || true
-        echo "✅ Cleanup complete"
+    - name: Keep Alive
+      run: sleep 28800
