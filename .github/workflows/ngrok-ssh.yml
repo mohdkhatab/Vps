@@ -1,4 +1,4 @@
-name: SSH Access
+name: Cloudflare SSH Tunnel
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ jobs:
     timeout-minutes: 480
     
     steps:
-    - name: Setup
+    - name: Setup SSH
       run: |
         mkdir -p ~/.ssh
         echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPuBRRWPeEzGzSajoJXoZO2ERMFErvU0iDeLmYuPYK7o u0_a317@localhost" >> ~/.ssh/authorized_keys
@@ -18,19 +18,28 @@ jobs:
         sudo apt-get install -y openssh-server
         sudo systemctl start ssh
 
-    - name: Install ngrok
+    - name: Install Cloudflared
       run: |
-        curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-        echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
-        sudo apt-get update
-        sudo apt-get install -y ngrok
-        ngrok config add-authtoken 2zBxl1Rf6s8s4TcaqMhkOmDoK97_8gn65VaDxGDKTFdeUGxq
+        wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+        chmod +x cloudflared-linux-amd64
+        sudo mv cloudflared-linux-amd64 /usr/local/bin/cloudflared
 
-    - name: Tunnel
+    - name: Start Tunnel
       run: |
-        ngrok tcp 22 &
+        cloudflared tunnel --url ssh://localhost:22 &
         sleep 10
-        curl -s http://localhost:4040/api/tunnels | python3 -c "import sys,json; print(json.load(sys.stdin)['tunnels'][0]['public_url'])"
+        URL=$(curl -s http://localhost:4040/api/tunnels | grep -o 'https://[^"]*\.trycloudflare\.com' | head -1)
+        
+        echo "========================================="
+        echo "🔐 SSH CONNECTION DETAILS"
+        echo "========================================="
+        echo ""
+        echo "🌐 Cloudflare URL: $URL"
+        echo ""
+        echo "📱 Connect from Termux:"
+        echo "   ssh -o ProxyCommand=\"cloudflared access ssh --hostname %h\" runner@$URL"
+        echo ""
+        echo "========================================="
 
     - name: Keep Alive
       run: sleep 28800
