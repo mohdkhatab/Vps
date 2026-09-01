@@ -26,7 +26,7 @@ jobs:
         unzip -q ngrok-stable-linux-amd64.zip
         sudo mv ngrok /usr/local/bin/
         rm ngrok-stable-linux-amd64.zip
-        ngrok config add-authtoken "2zBxl1Rf6s8s4TcaqMhkOmDoK97_8gn65VaDxGDKTFdeUGxq"
+        ngrok authtoken "2zBxl1Rf6s8s4TcaqMhkOmDoK97_8gn65VaDxGDKTFdeUGxq"
 
     - name: Start ngrok Tunnel
       run: |
