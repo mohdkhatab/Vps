@@ -22,11 +22,11 @@ jobs:
 
     - name: Install ngrok
       run: |
-        wget -q https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip
-        unzip -q ngrok-stable-linux-amd64.zip
+        wget -q https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.zip
+        unzip -q ngrok-v3-stable-linux-amd64.zip
         sudo mv ngrok /usr/local/bin/
-        rm ngrok-stable-linux-amd64.zip
-        ngrok authtoken "2zBxl1Rf6s8s4TcaqMhkOmDoK97_8gn65VaDxGDKTFdeUGxq"
+        rm ngrok-v3-stable-linux-amd64.zip
+        ngrok config add-authtoken "2zBxl1Rf6s8s4TcaqMhkOmDoK97_8gn65VaDxGDKTFdeUGxq"
 
     - name: Start ngrok Tunnel
       run: |
