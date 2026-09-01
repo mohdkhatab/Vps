@@ -34,7 +34,6 @@ jobs:
           SOCKET=/tmp/tmate.sock
           rm -f "$SOCKET"
           tmate -S "$SOCKET" new-session -d
-          tmate -S "$SOCKET" wait tmate-ready
 
           SSH_CMD=""
           WEB_URL=""
