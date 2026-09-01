@@ -13,21 +13,27 @@ jobs:
     timeout-minutes: 340
 
     steps:
-      - name: Start SSH session
-        id: tmate
-        uses: mxschmitt/action-tmate@v3
+      - name: Setup SSH session through Bore
+        id: ssh
+        uses: lexbritvin/ssh-session-action@v1
         with:
-          detached: true
-          limit-access-to-actor: false
-          connect-timeout-seconds: 120
+          use-bore: 'true'
+          use-actor-ssh-keys: 'true'
+          ssh-server-authorized-keys: |
+            ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPuBRRWPeEzGzSajoJXoZO2ERMFErvU0iDeLmYuPYK7o u0_a317@localhost
+          detached: 'true'
+          wait-timeout: '18000'
 
-      - name: Print SSH details
+      - name: Print SSH connection details
         run: |
           echo "========================================="
           echo "SSH CONNECTION DETAILS"
           echo "========================================="
-          echo "SSH: ${{ steps.tmate.outputs.ssh-command }}"
-          echo "WEB: ${{ steps.tmate.outputs.web-url }}"
+          echo "${{ steps.ssh.outputs.help-message }}"
+          echo "SSH command: ${{ steps.ssh.outputs.ssh-command }}"
+          echo "Host: ${{ steps.ssh.outputs.ssh-host }}"
+          echo "Port: ${{ steps.ssh.outputs.ssh-port }}"
+          echo "User: ${{ steps.ssh.outputs.ssh-user }}"
           echo "========================================="
 
       - name: Keep VM alive
