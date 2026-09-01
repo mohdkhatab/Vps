@@ -30,3 +30,15 @@ jobs:
 
       - name: Start SSH session
         uses: mxschmitt/action-tmate@v3
+        with:
+          detached: true
+          connect-timeout-seconds: 60
+
+      - name: Keep VM alive
+        run: |
+          echo "SSH session should be visible in the previous step's logs."
+          echo "This temporary VM will be destroyed when the job ends."
+          while true; do
+            echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] VM is alive"
+            sleep 60
+          done
