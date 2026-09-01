@@ -19,25 +19,50 @@ jobs:
           echo "Hostname: $(hostname)"
           echo "User: $(whoami)"
           echo "OS: $(. /etc/os-release && echo "$PRETTY_NAME")"
-          echo "Available disk:"
           df -h /
 
-      - name: Install useful packages
+      - name: Install SSH and tmate
         run: |
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            git curl wget unzip zip nano vim tmux htop net-tools python3-pip
+            git curl wget unzip zip nano vim tmux htop net-tools python3-pip tmate
 
       - name: Start SSH session
-        uses: mxschmitt/action-tmate@v3
-        with:
-          detached: true
-          connect-timeout-seconds: 60
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOCKET=/tmp/tmate.sock
+          rm -f "$SOCKET"
+          tmate -S "$SOCKET" new-session -d
+          tmate -S "$SOCKET" wait tmate-ready
+
+          SSH_CMD=""
+          WEB_URL=""
+          for attempt in $(seq 1 30); do
+            SSH_CMD=$(tmate -S "$SOCKET" display -p '#{tmate_ssh}' 2>/dev/null || true)
+            WEB_URL=$(tmate -S "$SOCKET" display -p '#{tmate_web}' 2>/dev/null || true)
+            if [[ "$SSH_CMD" == ssh\ * ]]; then
+              break
+            fi
+            sleep 2
+          done
+
+          if [[ "$SSH_CMD" != ssh\ * ]]; then
+            echo "ERROR: tmate did not provide an SSH command"
+            tmate -S "$SOCKET" show-messages || true
+            exit 1
+          fi
+
+          echo "========================================="
+          echo "SSH CONNECTION DETAILS"
+          echo "========================================="
+          echo "SSH: $SSH_CMD"
+          echo "WEB: $WEB_URL"
+          echo "========================================="
 
       - name: Keep VM alive
+        shell: bash
         run: |
-          echo "SSH session should be visible in the previous step's logs."
-          echo "This temporary VM will be destroyed when the job ends."
           while true; do
             echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] VM is alive"
             sleep 60
