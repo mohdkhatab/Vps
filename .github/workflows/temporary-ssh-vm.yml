@@ -1,0 +1,32 @@
+name: Temporary SSH VM
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ssh-vm:
+    name: Start Temporary Ubuntu VM
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+
+    steps:
+      - name: Show system information
+        run: |
+          echo "Temporary Ubuntu VM is ready"
+          echo "Hostname: $(hostname)"
+          echo "User: $(whoami)"
+          echo "OS: $(. /etc/os-release && echo "$PRETTY_NAME")"
+          echo "Available disk:"
+          df -h /
+
+      - name: Install useful packages
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            git curl wget unzip zip nano vim tmux htop net-tools python3-pip
+
+      - name: Start SSH session
+        uses: mxschmitt/action-tmate@v3
