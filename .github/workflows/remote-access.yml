@@ -1,6 +1,7 @@
 name: ngrok SSH Access
 
 "on":
+  push:
   workflow_dispatch:
 
 jobs:
