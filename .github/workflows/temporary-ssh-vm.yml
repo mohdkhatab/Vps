@@ -13,50 +13,21 @@ jobs:
     timeout-minutes: 340
 
     steps:
-      - name: Show system information
-        run: |
-          echo "Temporary Ubuntu VM is ready"
-          echo "Hostname: $(hostname)"
-          echo "User: $(whoami)"
-          echo "OS: $(. /etc/os-release && echo "$PRETTY_NAME")"
-          df -h /
-
-      - name: Install SSH and tmate
-        run: |
-          sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            git curl wget unzip zip nano vim tmux htop net-tools python3-pip tmate
-
       - name: Start SSH session
-        shell: bash
+        id: tmate
+        uses: mxschmitt/action-tmate@v3
+        with:
+          detached: true
+          limit-access-to-actor: false
+          connect-timeout-seconds: 120
+
+      - name: Print SSH details
         run: |
-          set -euo pipefail
-          SOCKET=/tmp/tmate.sock
-          rm -f "$SOCKET"
-          timeout 10s tmate -S "$SOCKET" new-session -d
-
-          SSH_CMD=""
-          WEB_URL=""
-          for attempt in $(seq 1 30); do
-            SSH_CMD=$(timeout 5s tmate -S "$SOCKET" display -p '#{tmate_ssh}' 2>/dev/null || true)
-            WEB_URL=$(timeout 5s tmate -S "$SOCKET" display -p '#{tmate_web}' 2>/dev/null || true)
-            if [[ "$SSH_CMD" == ssh\ * ]]; then
-              break
-            fi
-            sleep 2
-          done
-
-          if [[ "$SSH_CMD" != ssh\ * ]]; then
-            echo "ERROR: tmate did not provide an SSH command"
-            timeout 5s tmate -S "$SOCKET" show-messages || true
-            exit 1
-          fi
-
           echo "========================================="
           echo "SSH CONNECTION DETAILS"
           echo "========================================="
-          echo "SSH: $SSH_CMD"
-          echo "WEB: $WEB_URL"
+          echo "SSH: ${{ steps.tmate.outputs.ssh-command }}"
+          echo "WEB: ${{ steps.tmate.outputs.web-url }}"
           echo "========================================="
 
       - name: Keep VM alive
